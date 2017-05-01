@@ -64,37 +64,44 @@ Code compiled without errors with `cmake` and `make` using the Basic Build Instr
 
 ### Accuracy
 RMSE values for px, py, vx, vy:
-| RMSE           | px        | py        | vx       | vy       |
-|----------------|:----------|:----------|:---------|:--------:|
-| Laser only     | 0.110825  | 0.0972601 | 0.613797 | 0.249694 |
-| Radar only     | 0.151946  | 0.194988  | 0.379798 | 0.346756 |
-| Laser + Radar  | 0.0690528 | 0.0832843 | 0.3393   | 0.225877 |
+
+| RMSE          | px        | py        | vx       | vy       |
+|:--------------|:----------|:----------|:---------|:---------|
+| Laser only    | 0.110825  | 0.0972601 | 0.613797 | 0.249694 |
+| Radar only    | 0.151946  | 0.194988  | 0.379798 | 0.346756 |
+| **Laser + Radar** | **0.0690528** | **0.0832843** | **0.3393** | **0.225877** |
 
 ### Algorithm
-1. General Processing Flow:
+#### 1. General Processing Flow
+
 General Processing follows the initialize->Predict->Update->Predict->Update->.... cycle. Initialization of various UKF variables, mean vectors and covariance matrices are handled in the constructor of the UKF class (ukf.cpp:14-74). First measurements and timestamp are initialized in the `ProcessMeasurement()` function (ukf.cpp:90-126). Prediction and Update functions are handled by the `Prediction()`(ukf.cpp:154-271) and `UpdateLidar()`(ukf.cpp:277-358) for lidar or `UpdateRadar()` (ukf.cpp:364-466) for radar.
 
-2. First Measurements
+#### 2. First Measurements
+
 First measurements are handled appropriately in the `ProcessMeasurement()` function (ukf.cpp:90-126).
 
-3. Predict first then update
+#### 3. Predict first then update
+
 Upon receiving a measurement after the first, the algorithm predict object position to the current timestep (ukf.cpp:132-136) and then update the prediction using the new measurement (ukf.cpp:141-146). 
 
 In the Prediction function, first a set of sigma points are generated (ukf.cpp:160-189), then prediction is done using the chosen sigma points (ukf.cpp:195-238). Finally, the mean and covariance function of the predicted points are calculated (ukf.cpp:244-269.
 
 In both LIdar and Radar update functions, the process flow follows the general Unscented Kalman Filter procedure - first the same set of sigma points are mapped to the measurement space, and the resulting mean and covariance matries are updated, linearly added with the noise covariance matrix (ukf.cpp:283-322(Lidar), 370-420(Radar)). Then the Kalman gain is calculated and the new state vector and covariance matrix are calculated (ukf.cpp:328-352(Lidar), 426-460(Radar)). Finally, the Normalized Innovation Squared (NIS) value is generated to check for consistency and to adjust the initial noise estimates (ukf.cpp:357(Lidar), 465(Radar)).
 
-4. Handle both radar and lidar measurements
+#### 4. Handle both radar and lidar measurements
+
 The `ProcessMeasurement()` function calls `UpdateLidar()` if it is a lidar measurement (ukf.cpp:145) and `UpdateRadar()` if it is a radar measurement (ukf.cpp:142).
 
 ### Process Noise Estimates
 The initial noise variance given for the process noise are far too high for a bicycle. I used a more realistic estimated scenario of 0-22mph in 20sec for urban bicycle riding as a basis. This works out to be 1.77 m/s^2 and using the rule of thumb of half of the realistic accerleration, I set the initial noise variance to be 0.88^2, yielding a std_a of 0.88. For the yaw acceleration, I used my own estimate of how fast a bicycle can change it's yaw angle and used a rough value of 0.3 rad/s^2 which corresponds roughly to 17degrees/s^2.
 
-These two noise values worked out well, and I checked for consistencies using the NIS values as shown in the diagrams below:
+These two noise values worked out well, and I checked for consistencies using the NIS values as shown below:
+
 ![alt text](img/Laser_NIS.png "Laser_NIS")
+
 ![alt text](img/Radar_NIS.png "Radar_NIS")
 
-As observed, both sets of NIS values fits within the recommended 5% chi-squared values based on their respectively degrees of freedom (2 for lidar and 3 for radar). 
+As observed, both sets of NIS values behave appropriately within the recommended 5% chi-squared values based on their respectively degrees of freedom (2 for lidar and 3 for radar), i.e. about 10-20% of values exceed the benchback. 
 
 ### Single Sensor versus Sensor Fusion
 As shown in the accuracy table above, turning off either laser/lidar or radar updates results in lower RMSE values. In particular, radar is much worse then lidar in measuring position, while radar seems more consistent in measuring velocity. Lidar's velocity estimate is more accurate in one direction (y) then the other (x), which indicated the target may be moving generally broadside. Finally, when the measurements from both radar and lidar are fused, all of the accuracy values are greatly improved, i.e. significant gain can be realized by sensor fusion using Kalman filter. 
